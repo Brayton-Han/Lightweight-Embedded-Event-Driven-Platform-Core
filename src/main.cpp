@@ -23,21 +23,18 @@ int main() {
     Task hi{10, "HiTask", [](const Event& e) {
         (void)e; // Unused parameter
         for (volatile int i = 0; i < 1000; ++i); // Simulate work
-        std::cout << "HiTask executed at " << now_ns() << " ns" << std::endl;
     }};
     Task lo{1, "LoTask", [](const Event& e) {
         (void)e; // Unused parameter
         for (volatile int i = 0; i < 1000; ++i); // Simulate work
-        std::cout << "LoTask executed at " << now_ns() << " ns" << std::endl;
     }};
     Task another_lo{2, "AnotherLoTask", [](const Event& e) {
         (void)e; // Unused parameter
         for (volatile int i = 0; i < 500; ++i); // Simulate work
-        std::cout << "AnotherLoTask executed at " << now_ns() << " ns" << std::endl;
     }};
 
     // timer to enqueue low priority task every 10ms
-    loop.add_timerfd(10, EventType::TimerTick);
+    loop.add_timerfd(5, EventType::TimerTick);
     loop.register_task(EventType::TimerTick, lo);
     loop.register_task(EventType::TimerTick, another_lo);
 

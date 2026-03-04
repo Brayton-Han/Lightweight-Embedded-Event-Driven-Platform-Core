@@ -15,6 +15,11 @@ struct ScheduledItem {
 
 class Scheduler {
 public:
+    // maximum allowed priority - tasks or aging won't raise priority above this
+    static constexpr int kMaxPriority = 32;
+
+    Scheduler();
+
     void enqueue(const Task& task, const Event& event);
     std::optional<ScheduledItem> pick_next();
     size_t size() const;
@@ -22,5 +27,7 @@ public:
 private:
     void apply_aging_locked(uint64_t now_ns);
     mutable std::mutex mu_;
-    std::map<int, std::deque<ScheduledItem>, std::greater<int>> priority_queues_; // Map of priority to queue of scheduled items
+    static constexpr uint64_t aging_threshold_ns = 200'000; // 0.2ms
+    std::vector<std::deque<ScheduledItem>> queues_; // index 0 to kMaxPriority
+    int highest_priority_{-1}; // cache highest non-empty priority level
 };

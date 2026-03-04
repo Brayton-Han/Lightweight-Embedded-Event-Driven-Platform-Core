@@ -3,16 +3,20 @@
 #include <vector>
 #include <functional>
 #include "core/Events.h"
+#include "core/Task.h"
+#include "core/Scheduler.h"
 
 class EventLoop {
 public:
-    using Callback = std::function<void(const Event&)>;
-
     EventLoop();
     ~EventLoop();
 
-    int add_timerfd(int interval_ms, Callback cb);
-    int add_eventfd(Callback cb);
+    void set_scheduler(Scheduler& sched) { scheduler_ = &sched; }
+
+    int add_timerfd(int interval_ms, EventType type);
+    int add_eventfd(EventType type);
+
+    void register_task(EventType type, Task task);
 
     void signal_eventfd(int efd, uint64_t value = 1);
 
@@ -22,10 +26,8 @@ public:
 private:
     int epfd_{-1};
     bool running_{false};
+    Scheduler* scheduler_{nullptr};
 
-    struct Handler {
-        Callback cb;
-        EventType type;
-    };
-    std::unordered_map<int, Handler> handlers_;
+    std::unordered_map<int, EventType> fd_to_event_type_;
+    std::unordered_map<EventType, std::vector<Task>> event_routes_;
 };

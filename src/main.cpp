@@ -18,25 +18,32 @@ int main() {
     Scheduler scheduler;
     Metrics metrics;
     EventLoop loop;
+    loop.set_scheduler(scheduler);
 
     Task hi{10, "HiTask", [](const Event& e) {
         (void)e; // Unused parameter
         for (volatile int i = 0; i < 1000; ++i); // Simulate work
+        std::cout << "HiTask executed at " << now_ns() << " ns" << std::endl;
     }};
     Task lo{1, "LoTask", [](const Event& e) {
         (void)e; // Unused parameter
         for (volatile int i = 0; i < 1000; ++i); // Simulate work
+        std::cout << "LoTask executed at " << now_ns() << " ns" << std::endl;
+    }};
+    Task another_lo{2, "AnotherLoTask", [](const Event& e) {
+        (void)e; // Unused parameter
+        for (volatile int i = 0; i < 500; ++i); // Simulate work
+        std::cout << "AnotherLoTask executed at " << now_ns() << " ns" << std::endl;
     }};
 
     // timer to enqueue low priority task every 10ms
-    loop.add_timerfd(10, [&](const Event& e) {
-        scheduler.enqueue(lo, e);
-    });
+    loop.add_timerfd(10, EventType::TimerTick);
+    loop.register_task(EventType::TimerTick, lo);
+    loop.register_task(EventType::TimerTick, another_lo);
 
     // event to enqueue high priority task when signaled
-    int irq_fd = loop.add_eventfd([&](const Event& e) {
-        scheduler.enqueue(hi, e);
-    });
+    int irq_fd = loop.add_eventfd(EventType::Interrupt);
+    loop.register_task(EventType::Interrupt, hi);
 
     std::atomic<bool> running{true};
 

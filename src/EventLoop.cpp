@@ -20,12 +20,12 @@ EventLoop::EventLoop() {
 
 EventLoop::~EventLoop() {
     if (epfd_ >= 0) close(epfd_);
-    for (const auto& [fd, _] : handlers_) {
+    for (const auto& [fd, _] : fd_to_event_type_) {
         close(fd);
     }
 }
 
-int EventLoop::add_timerfd(int interval_ms, Callback cb) {
+int EventLoop::add_timerfd(int interval_ms, EventType type) {
     int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (tfd < 0) throw std::runtime_error("Failed to create timerfd");
 
@@ -46,11 +46,11 @@ int EventLoop::add_timerfd(int interval_ms, Callback cb) {
         throw std::runtime_error("Failed to add timerfd to epoll");
     }
 
-    handlers_[tfd] = Handler{std::move(cb), EventType::TimerTick};
+    fd_to_event_type_[tfd] = type;
     return tfd;
 }
 
-int EventLoop::add_eventfd(Callback cb) {
+int EventLoop::add_eventfd(EventType type) {
     int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (efd < 0) throw std::runtime_error("Failed to create eventfd");
 
@@ -62,8 +62,12 @@ int EventLoop::add_eventfd(Callback cb) {
         throw std::runtime_error("Failed to add eventfd to epoll");
     }
 
-    handlers_[efd] = Handler{std::move(cb), EventType::Interrupt};
+    fd_to_event_type_[efd] = type;
     return efd;
+}
+
+void EventLoop::register_task(EventType type, Task task) {
+    event_routes_[type].push_back(std::move(task));
 }
 
 void EventLoop::signal_eventfd(int efd, uint64_t value) {
@@ -73,6 +77,7 @@ void EventLoop::signal_eventfd(int efd, uint64_t value) {
 }
 
 void EventLoop::run() {
+    if (!scheduler_) throw std::runtime_error("Scheduler not set");
     running_ = true;
     std::vector<epoll_event> events(64);
 
@@ -85,14 +90,16 @@ void EventLoop::run() {
 
         for (int i = 0; i < n; ++i) {
             int fd = events[i].data.fd;
-            auto it = handlers_.find(fd);
-            if (it == handlers_.end()) continue;
+            auto it = fd_to_event_type_.find(fd);
+            if (it == fd_to_event_type_.end()) continue;
 
             uint64_t val = 0;
             if (read(fd, &val, sizeof(val)) <= 0) continue;
 
-            Event e{it->second.type, now_ns(), val};
-            it->second.cb(e);
+            Event e{it->second, now_ns(), val};
+            for (const auto& task : event_routes_[e.type]) {
+                scheduler_->enqueue(task, e);
+            }
         }
     }
 }

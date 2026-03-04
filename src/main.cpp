@@ -28,7 +28,11 @@ int main() {
         (void)e; // Unused parameter
         for (volatile int i = 0; i < 1000; ++i); // Simulate work
     }};
-    Task another_lo{2, "AnotherLoTask", [](const Event& e) {
+    Task lo_2{2, "AnotherLoTask", [](const Event& e) {
+        (void)e; // Unused parameter
+        for (volatile int i = 0; i < 500; ++i); // Simulate work
+    }};
+    Task lo_3{2, "AnotherLoTask", [](const Event& e) {
         (void)e; // Unused parameter
         for (volatile int i = 0; i < 500; ++i); // Simulate work
     }};
@@ -36,18 +40,21 @@ int main() {
     // timer to enqueue low priority task every 10ms
     loop.add_timerfd(5, EventType::TimerTick);
     loop.register_task(EventType::TimerTick, lo);
-    loop.register_task(EventType::TimerTick, another_lo);
+    loop.register_task(EventType::TimerTick, lo_2);
+    loop.register_task(EventType::TimerTick, lo_3);
 
     // event to enqueue high priority task when signaled
     int irq_fd = loop.add_eventfd(EventType::Interrupt);
     loop.register_task(EventType::Interrupt, hi);
 
     std::atomic<bool> running{true};
+    metrics.start_timing();
 
     // Worker thread to pick and execute tasks
     std::thread worker([&]() {
         while (running.load()) {
             auto item = scheduler.pick_next();
+            metrics.record_queue_depth(scheduler.size());
             if (!item) {
                 std::this_thread::sleep_for(std::chrono::microseconds(200)); // Sleep briefly if no tasks
                 continue;
@@ -62,7 +69,7 @@ int main() {
     std::thread irq_simulator([&]() {
         while (running.load()) {
             loop.signal_eventfd(irq_fd, 1);
-            std::this_thread::sleep_for(std::chrono::milliseconds(7));
+            std::this_thread::sleep_for(std::chrono::milliseconds(3));
         }
     });
 
